@@ -1,2 +1,2 @@
-# Dutch Auction NFT sale contract
+# Dutch Auction NFT selling contract
 Solidity

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.20;
 
 interface IERC721 {
     function ownerOf(
@@ -41,7 +41,7 @@ contract Auction {
 
         auctionItem = IERC721(_contract);
 
-        require(auctionItem.ownerOf(_nftId) == msg.sender, "Seller must own of the auction item");
+        require(auctionItem.ownerOf(_nftId) == msg.sender, "Seller must own the auctioned item");
         nftId = _nftId;
         isActive = true;
     }
@@ -69,7 +69,7 @@ contract Auction {
 
     function cancel() external {
         require(msg.sender == seller, "Only seller is allowed to cancel");
-
-        selfdestruct(seller);
+        isActive = false;
+        payable(seller).transfer(address(this).balance);   
     }
 }
