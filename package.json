@@ -4,7 +4,9 @@
   "description": "Dutch auction contract for NFT selling",
   "main": "index.js",
   "scripts": {
-    "test": "npx hardhat test"
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "coverage": "npx hardhat coverage"
   },
   "author": "Zakhar Deyneka",
   "license": "MIT",

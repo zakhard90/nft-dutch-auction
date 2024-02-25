@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-interface IERC721 {
-    function ownerOf(
-        uint _tokenId
-    ) external view returns (address owner);
-    function safeTransferFrom(
-        address _from,
-        address _to,
-        uint _nftId
-    ) external;
-}
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+
+error InvalidAccount(address account);
 
 contract Auction {
     uint private constant DURATION = 5670;
@@ -21,9 +14,11 @@ contract Auction {
     address payable public immutable seller;
     uint public immutable startingPrice;
     uint public immutable discountRate;
-    uint public immutable startAtBlock;
-    uint public immutable expiresAtBlock;
+    uint public startAtBlock;
+    uint public expiresAtBlock;
     bool private isActive;
+
+    event AuctionCancelled(address _sender);
 
     constructor(
         uint _startingPrice,
@@ -34,15 +29,24 @@ contract Auction {
         seller = payable(msg.sender);
         startingPrice = _startingPrice;
         discountRate = _discountRate;
-        startAtBlock = block.number;
-        expiresAtBlock = block.number + DURATION;
 
-        require(_startingPrice >= _discountRate * DURATION, "Starting price not correct");
+        require(
+            _startingPrice >= _discountRate * DURATION,
+            "Starting price not correct"
+        );
 
-        auctionItem = IERC721(_contract);
-
-        require(auctionItem.ownerOf(_nftId) == msg.sender, "Seller must own the auctioned item");
+        auctionItem = IERC721(_contract);        
         nftId = _nftId;
+    }
+
+    function start() external {
+        require(
+            auctionItem.ownerOf(nftId) == msg.sender,
+            "Seller must own the auctioned item"
+        ); 
+
+        startAtBlock = block.number;
+        expiresAtBlock = block.number + DURATION;        
         isActive = true;
     }
 
@@ -56,20 +60,21 @@ contract Auction {
         require(isActive && block.number < expiresAtBlock, "Auction ended");
 
         uint price = getPrice();
-        require(msg.value >= price, "Sent ETH is less than the price of the auction item");
-        
-        isActive = false;
+        require(msg.value >= price, "ETH not sufficient to buy the item");
 
-        auctionItem.safeTransferFrom(seller, msg.sender, nftId);
+        isActive = false;
+        auctionItem.transferFrom(seller, msg.sender, nftId);
+
         uint refund = msg.value - price;
         if (refund > 0) {
             payable(msg.sender).transfer(refund);
-        }        
+        }
     }
 
     function cancel() external {
         require(msg.sender == seller, "Only seller is allowed to cancel");
         isActive = false;
-        payable(seller).transfer(address(this).balance);   
+        payable(seller).transfer(address(this).balance);
+        emit AuctionCancelled(msg.sender);
     }
 }
