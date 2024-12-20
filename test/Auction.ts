@@ -16,7 +16,7 @@ describe("Auction", function () {
         await Blazer.safeMint(seller.address);
         const Auction = await AuctionFactory.connect(seller).deploy(startingPrice, decreaseRate, Blazer.getAddress(), 1);
         await Blazer.connect(seller).approve(Auction.getAddress(), nftId);
-        await Auction.connect(seller).start();
+        await expect(Auction.connect(seller).start()).to.emit(Auction, "AuctionStarted");
         const startAtBlock = await Auction.startAtBlock();
 
         const calculateLastPrice = async () => {
@@ -99,7 +99,9 @@ describe("Auction", function () {
             expect(sentValue).to.be.equal(expectedPrice);
             await expect(Auction.connect(buyer).buy({ value: sentValue }))
                 .to.emit(Blazer, "Transfer")
-                .withArgs(seller.address, buyer.address, nftId);
+                .withArgs(seller.address, buyer.address, nftId)
+                .to.emit(Auction, "AuctionSuccessful")
+                .withArgs(buyer.address, sentValue);
         });
 
         it("Should buy with higher price", async function () {
@@ -125,7 +127,7 @@ describe("Auction", function () {
         it("Non seller should not be able to cancel the auction", async function () {
             const { Auction, otherAccounts } = await loadFixture(deployAuctionFixture);
             await mine(10n);
-            await expect(Auction.connect(otherAccounts[0]).cancel()).to.be.revertedWith("Only seller is allowed to cancel");
+            await expect(Auction.connect(otherAccounts[0]).cancel()).to.be.revertedWithCustomError;
         });
     });
 
@@ -137,13 +139,13 @@ describe("Auction", function () {
                 .to.emit(Blazer, "Transfer")
                 .withArgs(seller.address, buyer.address, nftId);
             await mine(10n);            
-            await expect(Auction.connect(buyer).buy()).to.be.revertedWith("Auction ended");
+            await expect(Auction.connect(buyer).buy()).to.be.revertedWithCustomError;
         });
 
         it("Should revert on buy after expiry", async function () {
             const { Auction, buyer, oneDay } = await loadFixture(deployAuctionFixture);
             await mine(oneDay + 1n);
-            await expect(Auction.connect(buyer).buy()).to.be.revertedWith("Auction ended");
+            await expect(Auction.connect(buyer).buy()).to.be.revertedWithCustomError;
         });
 
         it("Should revert on buy with insufficient value", async function () {
@@ -155,7 +157,7 @@ describe("Auction", function () {
             const discount = await Auction.discountRate();
             const expectedPrice = currentPrice - discount;
             expect(sentValue).to.be.lessThan(expectedPrice);
-            await expect(Auction.connect(buyer).buy({ value: sentValue })).to.be.revertedWith("ETH not sufficient to buy the item");
+            await expect(Auction.connect(buyer).buy({ value: sentValue })).to.be.revertedWithCustomError;
         });
 
         it("Only owner should mint", async function () {

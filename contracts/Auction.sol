@@ -3,7 +3,14 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-error InvalidAccount(address account);
+error InvalidSellerAccount(address account);
+error InvalidStartingPrice(uint price);
+error InvalidNftOwner();
+error InvalidAuctionApproval();
+error InvalidContractAddress();
+error AuctionNotActive();
+error AuctionNotActiveOrExpired();
+error InsufficientValueSent();
 
 contract Auction {
     uint private constant DURATION = 5670;
@@ -18,6 +25,8 @@ contract Auction {
     uint public expiresAtBlock;
     bool private isActive;
 
+    event AuctionStarted(uint startBlock, uint endBlock);
+    event AuctionSuccessful(address buyer, uint price);
     event AuctionCancelled(address _sender);
 
     constructor(
@@ -26,53 +35,73 @@ contract Auction {
         address _contract,
         uint _nftId
     ) {
+        if (_contract == address(0)) {
+            revert InvalidContractAddress();
+        }
+
         seller = payable(msg.sender);
         startingPrice = _startingPrice;
         discountRate = _discountRate;
 
-        require(
-            _startingPrice >= _discountRate * DURATION,
-            "Starting price not correct"
-        );
+        if (_startingPrice < _discountRate * DURATION) {
+            revert InvalidStartingPrice(_startingPrice);
+        }
 
-        auctionItem = IERC721(_contract);        
+        auctionItem = IERC721(_contract);
         nftId = _nftId;
     }
 
     function start() external {
-        require(
-            auctionItem.ownerOf(nftId) == msg.sender,
-            "Seller must own the auctioned item"
-        ); 
+        if (auctionItem.ownerOf(nftId) != msg.sender) {
+            revert InvalidNftOwner();
+        }
+
+        if (auctionItem.getApproved(nftId) != address(this)) {
+            revert InvalidAuctionApproval();
+        }
 
         startAtBlock = block.number;
-        expiresAtBlock = block.number + DURATION;        
+        expiresAtBlock = block.number + DURATION;
         isActive = true;
+        emit AuctionStarted(startAtBlock, expiresAtBlock);
     }
 
     function getPrice() public view returns (uint) {
+        if (!isActive) {
+            revert AuctionNotActive();
+        }
+
         uint blocksElapsed = block.number - startAtBlock;
         uint discount = discountRate * blocksElapsed;
-        return startingPrice - discount;
+        return discount >= startingPrice ? 0 : startingPrice - discount;
     }
 
     function buy() external payable {
-        require(isActive && block.number < expiresAtBlock, "Auction ended");
+        if (!isActive || block.number >= expiresAtBlock) {
+            revert AuctionNotActiveOrExpired();
+        }
 
         uint price = getPrice();
-        require(msg.value >= price, "ETH not sufficient to buy the item");
+        if (msg.value < price) {
+            revert InsufficientValueSent();
+        }
 
         isActive = false;
+        uint refundAmount = msg.value - price;
         auctionItem.transferFrom(seller, msg.sender, nftId);
 
-        uint refund = msg.value - price;
-        if (refund > 0) {
-            payable(msg.sender).transfer(refund);
+        payable(seller).transfer(price);
+        if (refundAmount > 0) {
+            payable(msg.sender).transfer(refundAmount);
         }
+        emit AuctionSuccessful(msg.sender, price);
     }
 
     function cancel() external {
-        require(msg.sender == seller, "Only seller is allowed to cancel");
+        if (msg.sender != seller) {
+            revert InvalidSellerAccount(msg.sender);
+        }
+
         isActive = false;
         payable(seller).transfer(address(this).balance);
         emit AuctionCancelled(msg.sender);
