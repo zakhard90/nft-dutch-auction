@@ -9,7 +9,3 @@ typechain-types
 cache
 artifacts
 scripts
-
-# Samples
-contracts/Sample.sol
-test/Sample.ts
